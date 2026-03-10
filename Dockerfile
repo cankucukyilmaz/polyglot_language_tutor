@@ -9,10 +9,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy your source code
-COPY ./src /app/src
+# Copy all application files (including src/, scripts/, and start.sh)
+COPY . .
+
+# Make the startup script executable
+RUN chmod +x start.sh
 
 EXPOSE 8000
 
-# Start the web server
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the startup script (which downloads models, then starts Uvicorn)
+CMD ["./start.sh"]

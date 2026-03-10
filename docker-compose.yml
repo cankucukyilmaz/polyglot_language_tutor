@@ -16,6 +16,21 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+  
+  # --- ADD THIS NEW AUTOMATION BLOCK ---
+  ollama-pull:
+    image: curlimages/curl:latest
+    restart: "no"
+    command: >
+      sh -c "
+      echo 'Waiting for Ollama to wake up...';
+      sleep 10;
+      echo 'Pulling Llama 3.2:1b model... This may take a few minutes...';
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2:1b\"}';
+      echo 'LLM Ready!';
+      "
+    depends_on:
+      - ollama
 
   ngrok:
     image: ngrok/ngrok:latest

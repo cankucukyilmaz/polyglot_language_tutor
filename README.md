@@ -27,12 +27,24 @@ This project uses WebSockets to create a seamless conversational experience in E
 
 ### Prerequisites
 1. **Docker Desktop** installed and running.
-2. **Python 3.10+** installed on your host machine (only needed for the setup script).
-3. A free [Ngrok](https://ngrok.com/) Authtoken.
+2. A free [Ngrok](https://ngrok.com/) Authtoken.
 
-### Installation
+### Installation (Zero-Touch Setup)
 
 **1. Clone the repository:**
-```bash
-git clone [https://github.com/cankucukyilmaz/polyglot-tutor.git](https://github.com/cankucukyilmaz/polyglot-tutor.git)
-cd polyglot-tutor
+`git clone https://github.com/YOUR_USERNAME/polyglot-tutor.git`
+`cd polyglot-tutor`
+
+**2. Add your Tunnel Token:**
+Create a `.env` file in the root directory and add your Ngrok token so the app can generate a secure public link for your microphone:
+`NGROK_AUTHTOKEN=your_actual_token_here`
+
+**3. Launch the App:**
+`docker compose up -d --build`
+
+*That’s it! The Docker stack will automatically download the LLM, the voice models, and set up the secure tunnel in the background. (Note: The first time you run this, it will take a few minutes to download the AI models).*
+
+### 🎙️ Usage
+1. Find your public URL by checking your [Ngrok Dashboard](https://dashboard.ngrok.com/endpoints) or running: `docker compose logs ngrok | grep "url="`
+2. Open the URL on your phone or computer.
+3. Click **Start Conversation** and begin practicing!
