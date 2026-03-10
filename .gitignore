@@ -1,2 +1,17 @@
-.DS_Store
+# Virtual Environments
+venv/
 env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Ignore all downloaded AI models and temporary audio files
+models/*
+!models/.gitkeep
+*.onnx
+*.json
+*.wav
+
+# OS generated files
+.DS_Store

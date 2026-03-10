@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+vosk
+ollama
+jinja2
+requests
+piper-tts
+pathvalidate

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polyglot Tutor</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f4f4f9; }
+        h1 { color: #333; }
+        .controls { margin-top: 20px; padding: 30px; border: 1px solid #ddd; display: inline-block; border-radius: 10px; background: white; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); }
+        select, button { padding: 12px 20px; font-size: 16px; margin: 10px; border-radius: 5px; }
+        button { cursor: pointer; background-color: #007bff; color: white; border: none; transition: 0.3s; font-weight: bold; }
+        button:hover { background-color: #0056b3; }
+        #statusText { font-weight: bold; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>🌍 Polyglot AI Tutor (Live Mode)</h1>
+    
+    <div class="controls">
+        <label for="languageSelect"><strong>Choose your language:</strong></label><br>
+        <select id="languageSelect">
+            <option value="1">English</option>
+            <option value="2">Deutsch</option>
+            <option value="3">Español</option>
+        </select>
+        <br><br>
+        <button id="toggleChat">Start Conversation</button>
+    </div>
+    
+    <p id="statusText">Ready to practice.</p>
+
+    <script>
+        let ws;
+        let audioPlayer = new Audio();
+        let isRecording = false;
+        
+        let audioContext;
+        let processor;
+        let mediaStream;
+
+        const toggleBtn = document.getElementById("toggleChat");
+        const statusText = document.getElementById("statusText");
+        const languageSelect = document.getElementById("languageSelect");
+
+        toggleBtn.onclick = async () => {
+            if (isRecording) {
+                stopConversation();
+            } else {
+                startConversation();
+            }
+        };
+
+        async function startConversation() {
+            isRecording = true;
+            toggleBtn.innerText = "Stop Conversation";
+            toggleBtn.style.backgroundColor = "#dc3545";
+            statusText.innerText = "Connecting to AI...";
+
+            const langId = languageSelect.value;
+            ws = new WebSocket(`ws://localhost:8000/ws/${langId}`);
+
+            ws.onopen = async () => {
+                statusText.innerText = "Listening... Start speaking!";
+                statusText.style.color = "green";
+                
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                processor.onaudioprocess = (e) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        const pcm16 = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            let s = Math.max(-1, Math.min(1, inputData[i]));
+                            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
+                        ws.send(pcm16.buffer);
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+            };
+
+            ws.onmessage = async (event) => {
+                if (typeof event.data === "string") {
+                    const msg = JSON.parse(event.data);
+                    if (msg.action === "stop_audio") {
+                        console.log("Interrupted! Muting the AI.");
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0; 
+                    }
+                } else {
+                    console.log("Receiving audio reply from AI...");
+                    const audioBlob = new Blob([event.data], { type: 'audio/wav' });
+                    audioPlayer.src = URL.createObjectURL(audioBlob);
+                    audioPlayer.play();
+                }
+            };
+
+            ws.onerror = () => {
+                statusText.innerText = "Connection error. Check your backend.";
+                statusText.style.color = "red";
+                stopConversation();
+            }
+        }
+
+        function stopConversation() {
+            isRecording = false;
+            toggleBtn.innerText = "Start Conversation";
+            toggleBtn.style.backgroundColor = "#007bff";
+            statusText.innerText = "Session ended.";
+            statusText.style.color = "gray";
+            
+            if (ws) ws.close();
+            audioPlayer.pause();
+            
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+        }
+    </script>
+</body>
+</html>
