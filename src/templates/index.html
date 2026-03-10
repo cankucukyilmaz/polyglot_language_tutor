@@ -7,16 +7,32 @@
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f4f4f9; }
         h1 { color: #333; }
-        .controls { margin-top: 20px; padding: 30px; border: 1px solid #ddd; display: inline-block; border-radius: 10px; background: white; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); }
+        .controls { margin-top: 20px; padding: 30px; border: 1px solid #ddd; display: inline-block; border-radius: 10px; background: white; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); width: 80%; max-width: 600px; }
         select, button { padding: 12px 20px; font-size: 16px; margin: 10px; border-radius: 5px; }
         button { cursor: pointer; background-color: #007bff; color: white; border: none; transition: 0.3s; font-weight: bold; }
         button:hover { background-color: #0056b3; }
-        #statusText { font-weight: bold; color: #555; }
+        #statusText { font-weight: bold; color: #555; margin-bottom: 20px;}
         .setting-group { margin-bottom: 15px; }
+        
+        /* THE NEW TRANSCRIPT BOX CSS */
+        #transcriptBox {
+            height: 250px;
+            overflow-y: auto;
+            text-align: left;
+            padding: 15px;
+            border: 1px solid #ccc;
+            background: #fafafa;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        .user-msg { color: #0056b3; margin-bottom: 8px; }
+        .ai-msg { color: #28a745; margin-bottom: 8px; }
     </style>
 </head>
 <body>
-    <h1>🌍 Polyglot AI Tutor (Live Mode)</h1>
+    <h1>Polyglot AI Tutor</h1>
     
     <div class="controls">
         <div class="setting-group">
@@ -40,9 +56,14 @@
         </div>
         
         <button id="toggleChat">Start Conversation</button>
+        <p id="statusText">Ready to practice.</p>
+
+        <div id="transcriptBox">
+            <div style="color: #999; text-align: center; margin-top: 100px;">
+                <em>Conversation will appear here...</em>
+            </div>
+        </div>
     </div>
-    
-    <p id="statusText">Ready to practice.</p>
 
     <script>
         let ws;
@@ -57,6 +78,7 @@
         const statusText = document.getElementById("statusText");
         const languageSelect = document.getElementById("languageSelect");
         const speedSelect = document.getElementById("speedSelect");
+        const transcriptBox = document.getElementById("transcriptBox"); // NEW
 
         toggleBtn.onclick = async () => {
             if (isRecording) {
@@ -72,8 +94,8 @@
             toggleBtn.style.backgroundColor = "#dc3545"; 
             statusText.innerText = "Requesting microphone...";
             statusText.style.color = "black";
+            transcriptBox.innerHTML = ""; // Clear the box on new chat
 
-            // 1. Ask for the microphone IMMEDIATELY to bypass smartphone security blocks
             try {
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             } catch (err) {
@@ -84,7 +106,6 @@
                 return; 
             }
 
-            // 2. NOW connect to the server with Language AND Speed
             statusText.innerText = "Connecting to AI...";
             const langId = languageSelect.value;
             const speed = speedSelect.value;
@@ -92,7 +113,6 @@
             const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
             const host = window.location.host;
             
-            // Notice we added ?speed= to the URL!
             ws = new WebSocket(`${protocol}//${host}/ws/${langId}?speed=${speed}`);
 
             ws.onopen = async () => {
@@ -122,10 +142,18 @@
             ws.onmessage = async (event) => {
                 if (typeof event.data === "string") {
                     const msg = JSON.parse(event.data);
+                    
                     if (msg.action === "stop_audio") {
                         console.log("Interrupted! Muting the AI.");
                         audioPlayer.pause();
                         audioPlayer.currentTime = 0; 
+                    } 
+                    // --- NEW: HANDLE INCOMING TEXT FOR TRANSCRIPT ---
+                    else if (msg.role) {
+                        const name = msg.role === "user" ? "You" : "Tutor";
+                        const cssClass = msg.role === "user" ? "user-msg" : "ai-msg";
+                        transcriptBox.innerHTML += `<div class="${cssClass}"><strong>${name}:</strong> ${msg.text}</div>`;
+                        transcriptBox.scrollTop = transcriptBox.scrollHeight; // Auto-scroll to bottom
                     }
                 } else {
                     const audioBlob = new Blob([event.data], { type: 'audio/wav' });

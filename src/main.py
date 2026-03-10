@@ -1,124 +1,147 @@
 import os
-import re
 import json
-import asyncio
 import subprocess
-import tempfile
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+import requests
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.templating import Jinja2Templates
-from vosk import Model, KaldiRecognizer
-import ollama
+from fastapi.responses import HTMLResponse
+import vosk
 
+app = FastAPI()
+
+# Setup templates (for serving the index.html)
+templates = Jinja2Templates(directory="src/templates")
+
+# Configure the local LLM (Ollama) URL via Docker environment variables
+OLLAMA_URL = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+
+# Language Configurations
+# Update these folder/file names if your downloaded model files are named differently in your /models folder!
 LANGUAGES = {
     "1": {
         "name": "English",
-        "vosk_model": "models/model-en",
-        "voice_model": "models/en_US-lessac-low.onnx",
-        "system_prompt": "You are a patient, friendly English tutor. Answer in 1 or 2 short sentences. Gently correct the user if they make a grammar mistake."
+        "vosk_model": "model-en",
+        "voice_model": "en_US-lessac-low.onnx"
     },
     "2": {
         "name": "German",
-        "vosk_model": "models/model-de",
-        "voice_model": "models/de_DE-thorsten-low.onnx",
-        "system_prompt": "Du bist ein geduldiger, freundlicher Deutschlehrer. Antworte in 1 oder 2 kurzen Sätzen auf Deutsch. Korrigiere den Benutzer sanft, wenn er einen Fehler macht."
+        "vosk_model": "model-de",
+        "voice_model": "de_DE-thorsten-low.onnx"
     },
     "3": {
         "name": "Spanish",
-        "vosk_model": "models/model-es",
-        "voice_model": "models/es_ES-carlfm-x_low.onnx",
-        "system_prompt": "Eres un tutor de español paciente y amable. Responde en 1 o 2 oraciones cortas. Corrige suavemente al usuario si comete un error."
+        "vosk_model": "model-es",
+        "voice_model": "es_ES-carlfm-x_low.onnx"
     }
 }
 
-print("Loading AI Speech Models into memory... This may take a minute.")
+# Pre-load Vosk models into memory so it doesn't freeze on the first word
+print("Loading Vosk models into memory...")
 loaded_vosk_models = {}
-for key, config in LANGUAGES.items():
-    if os.path.exists(config["vosk_model"]):
-        loaded_vosk_models[key] = Model(config["vosk_model"])
+for lang_id, config in LANGUAGES.items():
+    model_path = f"/app/models/{config['vosk_model']}"
+    if os.path.exists(model_path):
+        loaded_vosk_models[lang_id] = vosk.Model(model_path)
+        print(f"Loaded {config['name']} Vosk model.")
     else:
-        print(f"Warning: Vosk model for {config['name']} not found at {config['vosk_model']}")
-
-app = FastAPI(title="Polyglot AI Tutor")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+        print(f"Warning: Could not find Vosk model at {model_path}")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_webpage(request: Request):
+    """Serves the frontend HTML interface."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.websocket("/ws/{lang_id}")
 async def websocket_endpoint(websocket: WebSocket, lang_id: str, speed: float = 1.0):
+    """Handles the real-time audio stream, STT, LLM, and TTS generation."""
     await websocket.accept()
-    
-    if lang_id not in LANGUAGES or lang_id not in loaded_vosk_models:
-        await websocket.send_json({"error": "Language model not available."})
+
+    # Get the requested language config
+    config = LANGUAGES.get(lang_id)
+    if not config or lang_id not in loaded_vosk_models:
         await websocket.close()
         return
 
-    config = LANGUAGES[lang_id]
-    recognizer = KaldiRecognizer(loaded_vosk_models[lang_id], 16000)
-    print(f"\nUser connected. Live session started in: {config['name']}")
+    # Initialize the specific Vosk recognizer for this WebSocket session
+    recognizer = vosk.KaldiRecognizer(loaded_vosk_models[lang_id], 16000)
     
-    bot_is_speaking = False
+    # Create a unique temporary audio filename for this specific connection
+    temp_filename = f"/app/models/temp_{id(websocket)}.wav"
 
     try:
         while True:
+            # Receive audio bytes from the user's browser
             data = await websocket.receive_bytes()
-            
-            # Interruption Check
-            if bot_is_speaking:
-                partial_result = json.loads(recognizer.PartialResult())
-                partial_text = partial_result.get("partial", "").strip()
-                if len(partial_text) > 3: 
-                    print(f"\n[User interrupted {config['name']} Tutor!]")
-                    await websocket.send_json({"action": "stop_audio"})
-                    bot_is_speaking = False
-                continue 
 
-            # Normal Listening
+            # Process the audio with Vosk
             if recognizer.AcceptWaveform(data):
+                # The user finished speaking a sentence
                 result = json.loads(recognizer.Result())
-                user_text = result.get("text", "").strip()
-                
+                user_text = result.get("text", "")
+
                 if user_text:
-                    print(f"\nYou: {user_text}")
-                    bot_is_speaking = True
+                    print(f"User ({config['name']}): {user_text}")
                     
-                    print(f"{config['name']} Tutor is thinking...")
+                    # --- NEW: SEND USER TRANSCRIPT TO FRONTEND ---
+                    await websocket.send_json({"role": "user", "text": user_text})
+
+                    # Prompt for the LLM
+                    system_prompt = f"You are a helpful language tutor. The user is practicing {config['name']}. Keep your replies conversational, natural, and limited to 1 or 2 short sentences."
                     
-                    # Call Ollama asynchronously
-                    response = await asyncio.to_thread(
-                        ollama.chat,
-                        model='llama3.2:1b',
-                        messages=[
-                            {'role': 'system', 'content': config["system_prompt"]},
-                            {'role': 'user', 'content': user_text}
-                        ]
-                    )
-                    
-                    bot_text = response['message']['content']
-                    print(f"Tutor: {bot_text}")
-                    
-                    clean_text = re.sub(r'[^a-zA-Z0-9äöüÄÖÜßñáéíóú\s\.,!\?]', '', bot_text)
-                    
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
-                        temp_filename = temp_audio.name
-                    
-                    # Convert speed (e.g., 1.5) into duration length (e.g., 0.66)
-                    piper_length_scale = round(1.0 / speed, 2)
-                    cmd_gen = f"echo '{clean_text}' | piper --model {config['voice_model']} --length_scale {piper_length_scale} --output_file {temp_filename}"
-                    await asyncio.to_thread(subprocess.run, cmd_gen, shell=True)
-                    
-                    with open(temp_filename, "rb") as f:
-                        audio_data = f.read()
-                        if bot_is_speaking: 
-                            await websocket.send_bytes(audio_data)
-                    
-                    os.remove(temp_filename)
-                    bot_is_speaking = False
+                    payload = {
+                        "model": "llama3.2:1b",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_text}
+                        ],
+                        "stream": False
+                    }
+
+                    try:
+                        # Send text to Ollama for an AI response
+                        print("Tutor is thinking...")
+                        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload)
+                        ai_response_text = resp.json()["message"]["content"]
+                        
+                        # Clean up text so it doesn't break the command line later
+                        clean_text = ai_response_text.replace('"', '').replace("'", "").replace('\n', ' ')
+                        print(f"Tutor ({config['name']}): {clean_text}")
+
+                        # --- NEW: SEND AI TRANSCRIPT TO FRONTEND ---
+                        await websocket.send_json({"role": "ai", "text": clean_text})
+
+                        # --- NEW: SPEED CONTROL MATH ---
+                        # Piper uses length_scale for duration. 
+                        # Speed 1.5x = Duration 0.66x. Speed 0.5x = Duration 2.0x.
+                        piper_length_scale = round(1.0 / speed, 2)
+
+                        # Generate audio using Piper TTS
+                        voice_model_path = f"/app/models/{config['voice_model']}"
+                        cmd_gen = f"echo '{clean_text}' | piper --model {voice_model_path} --length_scale {piper_length_scale} --output_file {temp_filename}"
+                        
+                        # Run the generation quietly
+                        subprocess.run(cmd_gen, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                        # Send the generated audio file back to the browser
+                        if os.path.exists(temp_filename):
+                            with open(temp_filename, "rb") as f:
+                                await websocket.send_bytes(f.read())
+                            os.remove(temp_filename) # Clean up
+
+                    except Exception as e:
+                        print(f"Error communicating with AI or TTS: {e}")
+
+            else:
+                # The user is currently speaking (partial audio)
+                partial = json.loads(recognizer.PartialResult())
+                partial_text = partial.get("partial", "")
+                
+                # --- INTERRUPT FIX ---
+                # If Vosk hears even a single tiny word (length > 1), stop the AI's audio immediately
+                if len(partial_text) > 1:
+                    await websocket.send_json({"action": "stop_audio"})
 
     except WebSocketDisconnect:
-        print("\nUser disconnected.")
+        print(f"Client disconnected.")
     except Exception as e:
-        print(f"\nConnection error: {e}")
+        print(f"WebSocket error: {e}")
