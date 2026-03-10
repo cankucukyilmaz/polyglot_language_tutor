@@ -1,4 +1,4 @@
-# 🌍 Polyglot AI Tutor (Live Mode)
+# 🌍 Polyglot AI Tutor
 
 A real-time, interruptible, voice-based AI language tutor running entirely offline in Docker. 
 
