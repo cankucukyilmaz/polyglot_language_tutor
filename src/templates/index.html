@@ -12,19 +12,33 @@
         button { cursor: pointer; background-color: #007bff; color: white; border: none; transition: 0.3s; font-weight: bold; }
         button:hover { background-color: #0056b3; }
         #statusText { font-weight: bold; color: #555; }
+        .setting-group { margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <h1>🌍 Polyglot AI Tutor (Live Mode)</h1>
     
     <div class="controls">
-        <label for="languageSelect"><strong>Choose your language:</strong></label><br>
-        <select id="languageSelect">
-            <option value="1">English</option>
-            <option value="2">Deutsch</option>
-            <option value="3">Español</option>
-        </select>
-        <br><br>
+        <div class="setting-group">
+            <label for="languageSelect"><strong>Choose your language:</strong></label><br>
+            <select id="languageSelect">
+                <option value="1">English</option>
+                <option value="2">Deutsch</option>
+                <option value="3">Español</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label for="speedSelect"><strong>Speech Speed:</strong></label><br>
+            <select id="speedSelect">
+                <option value="0.5">0.5x (Very Slow)</option>
+                <option value="0.75">0.75x (Slow)</option>
+                <option value="1.0" selected>1.0x (Normal)</option>
+                <option value="1.25">1.25x (Fast)</option>
+                <option value="1.5">1.5x (Very Fast)</option>
+            </select>
+        </div>
+        
         <button id="toggleChat">Start Conversation</button>
     </div>
     
@@ -32,7 +46,7 @@
 
     <script>
         let ws;
-        let audioPlayer = new Audio();
+        let audioPlayer = new Audio(); 
         let isRecording = false;
         
         let audioContext;
@@ -42,10 +56,11 @@
         const toggleBtn = document.getElementById("toggleChat");
         const statusText = document.getElementById("statusText");
         const languageSelect = document.getElementById("languageSelect");
+        const speedSelect = document.getElementById("speedSelect");
 
         toggleBtn.onclick = async () => {
             if (isRecording) {
-                stopConversation();
+                stopConversation(false); 
             } else {
                 startConversation();
             }
@@ -54,17 +69,35 @@
         async function startConversation() {
             isRecording = true;
             toggleBtn.innerText = "Stop Conversation";
-            toggleBtn.style.backgroundColor = "#dc3545";
-            statusText.innerText = "Connecting to AI...";
+            toggleBtn.style.backgroundColor = "#dc3545"; 
+            statusText.innerText = "Requesting microphone...";
+            statusText.style.color = "black";
 
+            // 1. Ask for the microphone IMMEDIATELY to bypass smartphone security blocks
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                console.error("Mic error:", err);
+                statusText.innerText = "Microphone blocked! Please refresh and allow access.";
+                statusText.style.color = "red";
+                stopConversation(true); 
+                return; 
+            }
+
+            // 2. NOW connect to the server with Language AND Speed
+            statusText.innerText = "Connecting to AI...";
             const langId = languageSelect.value;
-            ws = new WebSocket(`ws://localhost:8000/ws/${langId}`);
+            const speed = speedSelect.value;
+            
+            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const host = window.location.host;
+            
+            // Notice we added ?speed= to the URL!
+            ws = new WebSocket(`${protocol}//${host}/ws/${langId}?speed=${speed}`);
 
             ws.onopen = async () => {
                 statusText.innerText = "Listening... Start speaking!";
                 statusText.style.color = "green";
-                
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
                 const source = audioContext.createMediaStreamSource(mediaStream);
@@ -78,7 +111,7 @@
                             let s = Math.max(-1, Math.min(1, inputData[i]));
                             pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                         }
-                        ws.send(pcm16.buffer);
+                        ws.send(pcm16.buffer); 
                     }
                 };
 
@@ -95,26 +128,37 @@
                         audioPlayer.currentTime = 0; 
                     }
                 } else {
-                    console.log("Receiving audio reply from AI...");
                     const audioBlob = new Blob([event.data], { type: 'audio/wav' });
                     audioPlayer.src = URL.createObjectURL(audioBlob);
                     audioPlayer.play();
                 }
             };
 
-            ws.onerror = () => {
-                statusText.innerText = "Connection error. Check your backend.";
+            ws.onclose = () => {
+                if (isRecording) {
+                    statusText.innerText = "Connection lost. AI disconnected.";
+                    statusText.style.color = "red";
+                    stopConversation(true);
+                }
+            };
+
+            ws.onerror = (err) => {
+                console.error("WS Error:", err);
+                statusText.innerText = "Network error. Make sure your server is running.";
                 statusText.style.color = "red";
-                stopConversation();
+                stopConversation(true);
             }
         }
 
-        function stopConversation() {
+        function stopConversation(isError = false) {
             isRecording = false;
             toggleBtn.innerText = "Start Conversation";
-            toggleBtn.style.backgroundColor = "#007bff";
-            statusText.innerText = "Session ended.";
-            statusText.style.color = "gray";
+            toggleBtn.style.backgroundColor = "#007bff"; 
+            
+            if (!isError) {
+                statusText.innerText = "Session ended.";
+                statusText.style.color = "gray";
+            }
             
             if (ws) ws.close();
             audioPlayer.pause();

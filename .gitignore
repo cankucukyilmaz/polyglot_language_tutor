@@ -13,5 +13,8 @@ models/*
 *.json
 *.wav
 
+# Secret
+.env
+
 # OS generated files
 .DS_Store

@@ -48,7 +48,7 @@ async def get_webpage(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.websocket("/ws/{lang_id}")
-async def websocket_endpoint(websocket: WebSocket, lang_id: str):
+async def websocket_endpoint(websocket: WebSocket, lang_id: str, speed: float = 1.0):
     await websocket.accept()
     
     if lang_id not in LANGUAGES or lang_id not in loaded_vosk_models:
@@ -105,7 +105,9 @@ async def websocket_endpoint(websocket: WebSocket, lang_id: str):
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
                         temp_filename = temp_audio.name
                     
-                    cmd_gen = f"echo '{clean_text}' | piper --model {config['voice_model']} --length_scale 1.1 --output_file {temp_filename}"
+                    # Convert speed (e.g., 1.5) into duration length (e.g., 0.66)
+                    piper_length_scale = round(1.0 / speed, 2)
+                    cmd_gen = f"echo '{clean_text}' | piper --model {config['voice_model']} --length_scale {piper_length_scale} --output_file {temp_filename}"
                     await asyncio.to_thread(subprocess.run, cmd_gen, shell=True)
                     
                     with open(temp_filename, "rb") as f:

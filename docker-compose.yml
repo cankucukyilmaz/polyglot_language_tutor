@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   tutor-app:
     build: .
@@ -10,7 +8,6 @@ services:
     depends_on:
       - ollama
     volumes:
-      # This links your local models folder to the Docker container
       - ./models:/app/models 
 
   ollama:
@@ -19,6 +16,19 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: always
+    environment:
+      # This securely pulls the token from your new .env file!
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      - "tutor-app:8000"
+      - "--host-header=tutor-app:8000"
+    depends_on:
+      - tutor-app
 
 volumes:
   ollama_models:
