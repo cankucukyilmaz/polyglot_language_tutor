@@ -1,14 +1,25 @@
 # 🌍 Polyglot AI Tutor (Live Mode)
 
-A real-time, interruptible, voice-based AI language tutor running entirely offline. 
+A real-time, interruptible, voice-based AI language tutor running entirely offline in Docker. 
 
-This project uses WebSockets to create a seamless conversational experience in English, German, and Spanish. It features **true interruption**: if the AI misunderstands you, just start speaking again, and it will instantly cut itself off and listen—just like an advanced voice assistant.
+This project uses WebSockets to create a seamless conversational experience in English, German, and Spanish. It processes your speech locally, generates AI responses locally, and synthesizes human-like voices locally. 
 
-### 🧠 How It Works
-* **Brain (LLM):** Local `llama3.2:1b` via [Ollama](https://ollama.com/)
-* **Ears (STT):** [Vosk](https://alphacephei.com/vosk/) for real-time, offline speech recognition.
-* **Mouth (TTS):** [Piper](https://github.com/rhasspy/piper) for high-fidelity, offline voice generation.
-* **Architecture:** Python/FastAPI backend with a vanilla JavaScript/Web Audio API frontend, fully containerized in Docker.
+
+
+### ✨ Key Features
+* **True Interruption:** If the AI misunderstands you or talks too much, just start speaking. The system detects your voice instantly (sensitivity: 1 syllable) and cuts off the AI's audio stream.
+* **Live Ephemeral Transcript:** Watch your conversation happen in real-time on the UI. For maximum privacy, there is no database—the transcript vanishes forever the second you refresh the page.
+* **Dynamic Speed Control:** Native speakers talk fast. Users can adjust the AI's speech speed from 0.5x to 1.5x on the fly to practice listening comprehension.
+* **Mobile-Ready & Secure:** Includes an integrated Ngrok tunnel within the Docker stack, instantly providing a secure `https://` endpoint to bypass strict iOS/Android microphone security policies.
+* **100% Private:** No API keys for cloud AI. The "brain", "ears", and "mouth" all run entirely on your own hardware.
+
+### 🧠 Tech Stack
+* **LLM (Brain):** `llama3.2:1b` via [Ollama](https://ollama.com/)
+* **STT (Ears):** [Vosk](https://alphacephei.com/vosk/) (Offline Speech Recognition)
+* **TTS (Mouth):** [Piper](https://github.com/rhasspy/piper) (Offline High-Fidelity Voice Generation)
+* **Backend:** Python, FastAPI, WebSockets
+* **Frontend:** Vanilla HTML/JS, Web Audio API
+* **Infrastructure:** Docker Compose, Ngrok
 
 ---
 
@@ -16,10 +27,12 @@ This project uses WebSockets to create a seamless conversational experience in E
 
 ### Prerequisites
 1. **Docker Desktop** installed and running.
-2. **Python 3.10+** installed on your host machine (only needed for the one-time model download script).
+2. **Python 3.10+** installed on your host machine (only needed for the setup script).
+3. A free [Ngrok](https://ngrok.com/) Authtoken.
 
 ### Installation
+
 **1. Clone the repository:**
 ```bash
-git clone [https://github.com/cankucukyilmaz/polyglot_language_tutor](https://github.com/cankucukyilmaz/polyglot_language_tutor)
+git clone [https://github.com/cankucukyilmaz/polyglot-tutor.git](https://github.com/cankucukyilmaz/polyglot-tutor.git)
 cd polyglot-tutor
