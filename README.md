@@ -33,7 +33,7 @@ This project uses WebSockets to create a seamless conversational experience in E
 
 **1. Clone the repository:**
 `git clone https://github.com/cankucukyilmaz/polyglot_language_tutor.git`
-`cd polyglot-tutor`
+`cd polyglot_language_tutor`
 
 **2. Add your Tunnel Token:**
 Create a `.env` file in the root directory and add your Ngrok token so the app can generate a secure public link for your microphone:
