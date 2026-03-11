@@ -32,7 +32,7 @@ This project uses WebSockets to create a seamless conversational experience in E
 ### Installation (Zero-Touch Setup)
 
 **1. Clone the repository:**
-`git clone https://github.com/cankucukyilmaz/polyglot-tutor.git`
+`git clone https://github.com/cankucukyilmaz/polyglot_language_tutor.git`
 `cd polyglot-tutor`
 
 **2. Add your Tunnel Token:**
